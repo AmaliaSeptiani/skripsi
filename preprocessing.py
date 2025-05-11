@@ -1,8 +1,11 @@
 import pandas as pd
 import re
 import string
+import nltk
 from nltk.tokenize import word_tokenize
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+nltk.download('punkt_tab')
+
 
 # Load data dari file Excel
 def load_data(input_file):
