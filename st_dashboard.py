@@ -11,8 +11,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, message="X does not have valid feature names")
 
 # Load model TF-IDF dan SVM
-tfidf_vectorizer = joblib.load('tfidf_model_fix.pkl')
-svm_model = joblib.load('model_svm_fix.pkl')
+tfidf_vectorizer = joblib.load('tfidf_model_trained.pkl')
+svm_model = joblib.load('model_svm_trained.pkl')
 
 # Fungsi load kamus dari CSV
 def load_slangwords_from_csv(csv_file_path):

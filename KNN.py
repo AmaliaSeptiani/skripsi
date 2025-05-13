@@ -1,55 +1,82 @@
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, ConfusionMatrixDisplay
 from imblearn.over_sampling import SMOTE
-from sklearn.preprocessing import StandardScaler
+import numpy as np
+import matplotlib.pyplot as plt
+import joblib
+from tqdm.auto import tqdm
+import nltk
 
-# Baca data hasil TF-IDF
-df = pd.read_excel('D:/SKRIPSI/tfidf_fix.xlsx')
+# Unduh resource NLTK (sekali saja)
+nltk.download('punkt')
 
-# Pisahkan fitur dan label
-X = df.drop(columns=['VADER Sentiment (Binary)'])
+# === Step 1: Baca dataset ===
+input_file = 'D:/SKRIPSI/labelling_fix.xlsx'
+df = pd.read_excel(input_file)
+
+# Validasi kolom
+if 'text_akhir' not in df.columns or 'VADER Sentiment (Binary)' not in df.columns:
+    raise ValueError("Dataset harus memiliki kolom 'text_akhir' dan 'VADER Sentiment (Binary)'")
+
+# Bersihkan data
+df = df.dropna(subset=['text_akhir'])
+df['text_akhir'] = df['text_akhir'].astype(str)
+
+# === Step 2: Split data sebelum TF-IDF ===
+X_text = df['text_akhir']
 y = df['VADER Sentiment (Binary)']
 
-# Pastikan semua nama kolom berupa string
-X.columns = X.columns.astype(str)
+X_train_text, X_test_text, y_train, y_test = train_test_split(
+    X_text, y, test_size=0.2, random_state=42, stratify=y)
 
-# Split data: 80% latih, 20% uji
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+# === Step 3: TF-IDF hanya dari data latih ===
+print("🔍 Menghitung TF-IDF hanya dari data latih...")
+tfidf_vectorizer = TfidfVectorizer(
+    ngram_range=(1, 1),
+    max_features=1000,
+    min_df=7,
+    max_df=0.7
+)
 
-# Balancing data latih dengan SMOTE
+with tqdm(total=1, desc="TF-IDF Processing", unit="step") as pbar:
+    X_train_tfidf = tfidf_vectorizer.fit_transform(X_train_text)
+    X_test_tfidf = tfidf_vectorizer.transform(X_test_text)
+    pbar.update(1)
+
+# === Step 4: SMOTE pada data latih ===
+print("📊 Distribusi Label Sebelum SMOTE:")
+print(pd.Series(y_train).value_counts(), '\n')
+
 smote = SMOTE(random_state=42)
-X_train_bal, y_train_bal = smote.fit_resample(X_train, y_train)
+X_train_bal, y_train_bal = smote.fit_resample(X_train_tfidf, y_train)
 
-# Standardisasi data (WAJIB untuk KNN)
-scaler = StandardScaler()
-X_train_bal = scaler.fit_transform(X_train_bal)
-X_test = scaler.transform(X_test)
+print("📊 Distribusi Label Setelah SMOTE:")
+print(pd.Series(y_train_bal).value_counts(), '\n')
 
-# Inisialisasi dan latih model KNN
-knn_model = KNeighborsClassifier(n_neighbors=2) 
+# === Step 5: Latih model KNN ===
+knn_model = KNeighborsClassifier(n_neighbors=5, metric='cosine')  # pakai cosine distance
 knn_model.fit(X_train_bal, y_train_bal)
 
-# Prediksi data uji
-y_pred = knn_model.predict(X_test)
+# === Step 6: Evaluasi ===
+y_pred = knn_model.predict(X_test_tfidf)
 
-# Hitung akurasi untuk data latih
-y_train_pred = knn_model.predict(X_train_bal)
-accuracy_train = accuracy_score(y_train_bal, y_train_pred)
-
-# Evaluasi model
-accuracy = accuracy_score(y_test, y_pred)
-precision = precision_score(y_test, y_pred, zero_division=0)
-recall = recall_score(y_test, y_pred, zero_division=0)
-f1 = f1_score(y_test, y_pred, zero_division=0)
-
-# Cetak hasil evaluasi
-print("📊 Hasil Evaluasi KNN:")
-print(f"✅ Akurasi Training : {accuracy_train:.4f}")
-print(f"✅ Akurasi Testing  : {accuracy:.4f}")
-print(f"✅ Presisi          : {precision:.4f}")
-print(f"✅ Recall           : {recall:.4f}")
-print(f"✅ F1-Score         : {f1:.4f}")
-print("\n📋 Classification Report:\n")
+print("\n📋 Classification Report (Testing):\n")
 print(classification_report(y_test, y_pred, zero_division=0))
+
+accuracy_train = accuracy_score(y_train_bal, knn_model.predict(X_train_bal))
+print(f"📈 Akurasi Training: {accuracy_train:.4f}")
+
+# Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=knn_model.classes_)
+disp.plot(cmap='Blues', values_format='d')
+plt.title("Confusion Matrix - KNN")
+plt.grid(False)
+plt.show()
+
+# === Optional: Simpan model dan vectorizer ===
+# joblib.dump(knn_model, 'D:/SKRIPSI/model_knn_fix.pkl')
+# joblib.dump(tfidf_vectorizer, 'D:/SKRIPSI/tfidf_model_fix.pkl')
